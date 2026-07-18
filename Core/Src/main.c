@@ -276,12 +276,12 @@ HAL_StatusTypeDef LT8491_ReadWord(uint16_t devAddr, uint8_t reg, uint16_t *value
 }
 
 HAL_StatusTypeDef LT8491_ReadAllTelemetry(I2C_HandleTypeDef *hi2c, uint16_t devAddr, LT8491_Telemetry_t *tele){
-  if (LT8491_ReadWord(hi2c, devAddr, TELE_TBAT, &tele->tbat) != HAL_OK) goto fail;
-  if (LT8491_ReadWord(hi2c, devAddr, TELE_POUT, &tele->pout) != HAL_OK) goto fail;
-  if (LT8491_ReadWord(hi2c, devAddr, TELE_PIN,  &tele->pin)  != HAL_OK) goto fail;
-  if (LT8491_ReadWord(hi2c, devAddr, TELE_IOUT, &tele->iout) != HAL_OK) goto fail;
-  if (LT8491_ReadWord(hi2c, devAddr, TELE_VBAT, &tele->vbat) != HAL_OK) goto fail;
-  if (LT8491_ReadWord(hi2c, devAddr, TELE_VIN,  &tele->vin)  != HAL_OK) goto fail;
+  if (LT8491_ReadWord(devAddr, TELE_TBAT, &tele->tbat) != HAL_OK) goto fail;
+  if (LT8491_ReadWord(devAddr, TELE_POUT, &tele->pout) != HAL_OK) goto fail;
+  if (LT8491_ReadWord(devAddr, TELE_PIN,  &tele->pin)  != HAL_OK) goto fail;
+  if (LT8491_ReadWord(devAddr, TELE_IOUT, &tele->iout) != HAL_OK) goto fail;
+  if (LT8491_ReadWord(devAddr, TELE_VBAT, &tele->vbat) != HAL_OK) goto fail;
+  if (LT8491_ReadWord(devAddr, TELE_VIN,  &tele->vin)  != HAL_OK) goto fail;
   return HAL_OK;
  fail:
   *tele = (LT8491_Telemetry_t){0};
