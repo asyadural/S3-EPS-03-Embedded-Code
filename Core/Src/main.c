@@ -46,6 +46,15 @@ typedef struct{
   uint8_t payload[8];
 }FDCAN_queue_element;
 
+typedef struct {
+    uint16_t tbat;
+    uint16_t pout;
+    uint16_t pin;
+    uint16_t iout;
+    uint16_t vbat;
+    uint16_t vin;
+} LT8491_Telemetry_t;
+
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -65,10 +74,28 @@ typedef struct{
 #define TELE_IOUT  0x08
 #define TELE_VBAT  0x0C
 #define TELE_VIN   0x0E
+
 #define LT8491_CH1_ADDR  (0x10 << 1)
 #define LT8491_CH2_ADDR  (0x29 << 1)
 #define LT8491_CH3_ADDR  (0x19 << 1)
 
+#define WDI_TOGGLE_INTERVAL_MS  500 // must be under the external WDI timeout
+
+// SONRADAN DEĞİŞTİRİLECEK PLACEHOLDERS
+#define EN_I2C_CH1_PORT   GPIOA         
+#define EN_I2C_CH1_PIN    GPIO_PIN_1    
+#define EN_I2C_CH2_PORT   GPIOA       
+#define EN_I2C_CH2_PIN    GPIO_PIN_0    
+#define EN_I2C_CH3_PORT   GPIOB        
+#define EN_I2C_CH3_PIN    GPIO_PIN_10    
+#define EN_I2C_BAT_PORT   GPIOA          
+#define EN_I2C_BAT_PIN    GPIO_PIN_2    
+
+#define CLAMP_U16(x)  ((x) > 0xFFFFU ? (uint16_t)0xFFFF : (uint16_t)(x)) // uint32 to uint16
+
+#define CH_STATUS_CH1_VALID  0x01
+#define CH_STATUS_CH2_VALID  0x02
+#define CH_STATUS_CH3_VALID  0x04
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -95,6 +122,7 @@ uint8_t rxData[8];
 
 uint32_t last_heartbeat_time = 0;
 uint32_t last_OBC_heartbeat_time = 0;
+uint32_t last_wdi_toggle_time = 0;
 const uint32_t heartbeat_interval = 1000;
 const uint32_t OBC_heartbeat_reset_time = 10000;
 
@@ -104,6 +132,7 @@ volatile uint16_t queue_overflow_counter = 0;
 
 FDCAN_queue_element fdcan_queue[FDCAN_QUEUE_SIZE];
 
+uint8_t mppt_ch_status = 0; // whether the read from last i2c channel succeded or failed for debug
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -126,6 +155,8 @@ uint8_t FDCAN_DLC_ToBytes(uint32_t dataLength);
 HAL_StatusTypeDef FDCAN_ProcessQueueElement(FDCAN_queue_element *element);
 uint32_t FDCAN_Bytes_To_DLC(uint8_t bytes);
 HAL_StatusTypeDef LT8491_ReadWord(uint16_t devAddr, uint8_t reg, uint16_t *value);
+HAL_StatusTypeDef LT8491_ReadAllTelemetry(I2C_HandleTypeDef *hi2c, uint16_t devAddr, LT8491_Telemetry_t *tele);
+void MPPT_EN_I2C_Init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -227,10 +258,11 @@ uint32_t FDCAN_Bytes_To_DLC(uint8_t bytes){
 HAL_StatusTypeDef FDCAN_ProcessQueueElement(FDCAN_queue_element *element){
     switch(element->message_id){
     	case MSG_ID_MPPT_HOUSEKEEPING: return MPPT_Send_Housekeeping();
+      case MSG_ID_MPPT_HEARTBEAT: return MPPT_Send_Heartbeat();
         default:
             break;
     }
-    return HAL_ERROR;
+    return HAL_OK;
 }
 
 HAL_StatusTypeDef LT8491_ReadWord(uint16_t devAddr, uint8_t reg, uint16_t *value){
@@ -242,76 +274,115 @@ HAL_StatusTypeDef LT8491_ReadWord(uint16_t devAddr, uint8_t reg, uint16_t *value
     *value = (uint16_t)(data[0] | (data[1] << 8));   //little endian, yanlışsa düzeltiriz
     return HAL_OK;
 }
+
+HAL_StatusTypeDef LT8491_ReadAllTelemetry(I2C_HandleTypeDef *hi2c, uint16_t devAddr, LT8491_Telemetry_t *tele){
+  if (LT8491_ReadWord(hi2c, devAddr, TELE_TBAT, &tele->tbat) != HAL_OK) goto fail;
+  if (LT8491_ReadWord(hi2c, devAddr, TELE_POUT, &tele->pout) != HAL_OK) goto fail;
+  if (LT8491_ReadWord(hi2c, devAddr, TELE_PIN,  &tele->pin)  != HAL_OK) goto fail;
+  if (LT8491_ReadWord(hi2c, devAddr, TELE_IOUT, &tele->iout) != HAL_OK) goto fail;
+  if (LT8491_ReadWord(hi2c, devAddr, TELE_VBAT, &tele->vbat) != HAL_OK) goto fail;
+  if (LT8491_ReadWord(hi2c, devAddr, TELE_VIN,  &tele->vin)  != HAL_OK) goto fail;
+  return HAL_OK;
+ fail:
+  *tele = (LT8491_Telemetry_t){0};
+  return HAL_ERROR;
+}
+
+void MPPT_EN_I2C_Init(void){ //pinler yine placeholder, sonradan değiştirilecek
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Mode  = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull  = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+ 
+    gpio.Pin = EN_I2C_CH1_PIN;
+    HAL_GPIO_Init(EN_I2C_CH1_PORT, &gpio);
+ 
+    gpio.Pin = EN_I2C_CH2_PIN;
+    HAL_GPIO_Init(EN_I2C_CH2_PORT, &gpio);
+ 
+    gpio.Pin = EN_I2C_CH3_PIN;
+    HAL_GPIO_Init(EN_I2C_CH3_PORT, &gpio);
+ 
+    gpio.Pin = EN_I2C_BAT_PIN;
+    HAL_GPIO_Init(EN_I2C_BAT_PORT, &gpio);
+ 
+    /* Drive all enables high, level shifters pass-through */
+    HAL_GPIO_WritePin(EN_I2C_CH1_PORT, EN_I2C_CH1_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(EN_I2C_CH2_PORT, EN_I2C_CH2_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(EN_I2C_CH3_PORT, EN_I2C_CH3_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(EN_I2C_BAT_PORT, EN_I2C_BAT_PIN, GPIO_PIN_SET);
+}
+
 HAL_StatusTypeDef MPPT_Send_Housekeeping(void){
     uint16_t payload[18] = {0};
-
-    uint16_t ch1_pout, ch1_pin, ch1_iout, ch1_vbat, ch1_vin, ch1_tbat;
-    uint16_t ch2_pout, ch2_pin, ch2_iout, ch2_vin, ch2_tbat;
-    uint16_t ch3_pout, ch3_pin, ch3_iout, ch3_vin, ch3_tbat;
-
-    if (LT8491_ReadWord(LT8491_CH1_ADDR, TELE_POUT, &ch1_pout) != HAL_OK) return HAL_ERROR;
-    if (LT8491_ReadWord(LT8491_CH1_ADDR, TELE_PIN,  &ch1_pin)  != HAL_OK) return HAL_ERROR;
-    if (LT8491_ReadWord(LT8491_CH1_ADDR, TELE_IOUT, &ch1_iout) != HAL_OK) return HAL_ERROR;
-    if (LT8491_ReadWord(LT8491_CH1_ADDR, TELE_VBAT, &ch1_vbat) != HAL_OK) return HAL_ERROR;
-    if (LT8491_ReadWord(LT8491_CH1_ADDR, TELE_VIN,  &ch1_vin)  != HAL_OK) return HAL_ERROR;
-    if (LT8491_ReadWord(LT8491_CH1_ADDR, TELE_TBAT, &ch1_tbat) != HAL_OK) return HAL_ERROR;
-
-    if (LT8491_ReadWord(LT8491_CH2_ADDR, TELE_POUT, &ch2_pout) != HAL_OK) return HAL_ERROR;
-    if (LT8491_ReadWord(LT8491_CH2_ADDR, TELE_PIN,  &ch2_pin)  != HAL_OK) return HAL_ERROR;
-    if (LT8491_ReadWord(LT8491_CH2_ADDR, TELE_IOUT, &ch2_iout) != HAL_OK) return HAL_ERROR;
-    if (LT8491_ReadWord(LT8491_CH2_ADDR, TELE_VIN,  &ch2_vin)  != HAL_OK) return HAL_ERROR;
-    if (LT8491_ReadWord(LT8491_CH2_ADDR, TELE_TBAT, &ch2_tbat) != HAL_OK) return HAL_ERROR;
-
-    if (LT8491_ReadWord(LT8491_CH3_ADDR, TELE_POUT, &ch3_pout) != HAL_OK) return HAL_ERROR;
-    if (LT8491_ReadWord(LT8491_CH3_ADDR, TELE_PIN,  &ch3_pin)  != HAL_OK) return HAL_ERROR;
-    if (LT8491_ReadWord(LT8491_CH3_ADDR, TELE_IOUT, &ch3_iout) != HAL_OK) return HAL_ERROR;
-    if (LT8491_ReadWord(LT8491_CH3_ADDR, TELE_VIN,  &ch3_vin)  != HAL_OK) return HAL_ERROR;
-    if (LT8491_ReadWord(LT8491_CH3_ADDR, TELE_TBAT, &ch3_tbat) != HAL_OK) return HAL_ERROR;
-
-    payload[0]  = ch1_vbat;                         //battery voltage
-    payload[1]  = ch1_iout + ch2_iout + ch3_iout;   // battery current
-    payload[2]  = ch1_pout + ch2_pout + ch3_pout;   // battery charge
-    payload[3]  = ch1_pout;  // p. out
-    payload[4]  = ch1_pin;   // p. draw
-    payload[5]  = ch1_vin;   // p. voltage
-    payload[6]  = 0; // palceholder
-
-    payload[7]  = ch2_pout;
-    payload[8]  = ch2_pin;
-    payload[9]  = ch2_vin;
-    payload[10] = 0;
-
-    payload[11] = ch3_pout;
-    payload[12] = ch3_pin;
-    payload[13] = ch3_vin;
-    payload[14] = 0;
-
-    payload[15] = ch1_tbat; // mppt board temp için ch1 kullandım
-    payload[16] = 0;
-    payload[17] = 0;
-
+ 
+    LT8491_Telemetry_t ch1 = {0};
+    LT8491_Telemetry_t ch2 = {0};
+    LT8491_Telemetry_t ch3 = {0};
+    mppt_ch_status = 0;
+ 
+    /* --- Read each channel independently --- */
+    if (LT8491_ReadAllTelemetry(&hi2c1, LT8491_CH1_ADDR, &ch1) == HAL_OK)
+        mppt_ch_status |= CH_STATUS_CH1_VALID;
+ 
+    if (LT8491_ReadAllTelemetry(&hi2c1, LT8491_CH2_ADDR, &ch2) == HAL_OK)
+        mppt_ch_status |= CH_STATUS_CH2_VALID;
+ 
+    if (LT8491_ReadAllTelemetry(&hi2c1, LT8491_CH3_ADDR, &ch3) == HAL_OK)
+        mppt_ch_status |= CH_STATUS_CH3_VALID;
+ 
+    /* --- Assemble payload (matches spec 3.3.2, 0x86) --- */
+ 
+    /* Overflow-safe sums for combined battery fields */
+    uint32_t total_iout = (uint32_t)ch1.iout + ch2.iout + ch3.iout;
+    uint32_t total_pout = (uint32_t)ch1.pout + ch2.pout + ch3.pout;
+ 
+    payload[0]  = ch1.vbat;              // battery voltage mv
+    payload[1]  = CLAMP_U16(total_iout); // battery current ma
+    payload[2]  = CLAMP_U16(total_pout);  // battery power mw
+ 
+    payload[3]  = ch1.pout;               // CH1 Power Out     
+    payload[4]  = ch1.pin;                // CH1 Power Draw      
+    payload[5]  = ch1.vin;                // CH1 Power Voltage   
+    payload[6]  = 0;                      // CH1 Placeholder         
+ 
+    payload[7]  = ch2.pout;               // CH2 Power Out      
+    payload[8]  = ch2.pin;                // CH2 Power Draw      
+    payload[9]  = ch2.vin;                // CH2 Power Voltage  
+    payload[10] = 0;                      // CH2 Placeholder         
+ 
+    payload[11] = ch3.pout;               // CH3 Power Out   
+    payload[12] = ch3.pin;                // CH3 Power Draw    
+    payload[13] = ch3.vin;                // CH3 Power Voltage 
+    payload[14] = 0;                      // CH3 Placeholder         
+ 
+    payload[15] = ch1.tbat;               // MPPT Board Temp burda channel 1 okumak yeterli mi? 
+    payload[16] = 0;                      // Placeholder            
+    payload[17] = 0;                      // Placeholder           
+ 
+    /* --- Transmit 36 bytes across 5 classic CAN frames --- */
     METUCube_FDCAN_ID_t fdcan_id;
     fdcan_id.priority = 0x03;
     fdcan_id.sender = MPPT_ID;
     fdcan_id.receiver = OBC_ID;
     fdcan_id.message_id = MSG_ID_MPPT_HOUSEKEEPING;
-
+ 
     uint8_t *bytes = (uint8_t *)payload;
     uint8_t total_bytes = 36;
-
+ 
     for (uint8_t segment = 0; segment < 5; segment++){
         uint8_t remaining = total_bytes - segment * 8;
         uint8_t dlc = (remaining >= 8) ? 8 : remaining;
-
+ 
         fdcan_id.seq_count = segment;
-
+ 
         if (segment == 0)
-            fdcan_id.seq_type = 0x01;
+            fdcan_id.seq_type = 0x01;     
         else if (segment == 4)
-            fdcan_id.seq_type = 0x02;
+            fdcan_id.seq_type = 0x02;   
         else
-            fdcan_id.seq_type = 0x00;
-
+            fdcan_id.seq_type = 0x00;     
+ 
         txHeader.Identifier = Build_FDCAN_ID_FromStruct(&fdcan_id);
         txHeader.IdType = FDCAN_EXTENDED_ID;
         txHeader.TxFrameType = FDCAN_DATA_FRAME;
@@ -321,18 +392,18 @@ HAL_StatusTypeDef MPPT_Send_Housekeeping(void){
         txHeader.FDFormat = FDCAN_CLASSIC_CAN;
         txHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
         txHeader.MessageMarker = 0;
-
+ 
         for (uint8_t i = 0; i < dlc; i++) {
             txData[i] = bytes[segment * 8 + i];
         }
-
+ 
         HAL_StatusTypeDef status = HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &txHeader, txData);
-
+ 
         if (status != HAL_OK) return status;
-
+ 
         HAL_Delay(2);
     }
-
+ 
     return HAL_OK;
 }
 /* USER CODE END 0 */
@@ -370,6 +441,8 @@ int main(void)
   MX_SPI1_Init();
   MX_I2C2_Init();
   MX_I2C1_Init();
+
+  MPPT_EN_I2C_Init(); // placeholderları değiştirmeyi unutma
   /* USER CODE BEGIN 2 */
   if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_ACCEPT_IN_RX_FIFO0,FDCAN_ACCEPT_IN_RX_FIFO0,FDCAN_REJECT_REMOTE, FDCAN_REJECT_REMOTE) != HAL_OK){
       errorCounter++;
@@ -391,6 +464,12 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+    if (HAL_GetTick() - last_wdi_toggle_time >= WDI_TOGGLE_INTERVAL_MS) {
+		  last_wdi_toggle_time = HAL_GetTick();
+		  HAL_GPIO_TogglePin(WDI_GPIO_Port, WDI_Pin);
+	  }
+
 	  if(HAL_GetTick() - last_heartbeat_time >= heartbeat_interval) {
 		  last_heartbeat_time = HAL_GetTick();
 	  	  if(MPPT_Send_Heartbeat() != HAL_OK) {
@@ -692,7 +771,7 @@ void HAL_FDCAN_RxFifo0Callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs)
 
     if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &rxHeader, rxData) != HAL_OK){
     	errorCounter++;
-        return;
+      return;
     }
 
     canRecCounter++;
