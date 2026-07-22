@@ -83,13 +83,13 @@ typedef struct {
 
 // SONRADAN DEĞİŞTİRİLECEK PLACEHOLDERS
 #define EN_I2C_CH1_PORT   GPIOA         
-#define EN_I2C_CH1_PIN    GPIO_PIN_1    
+#define EN_I2C_CH1_PIN    GPIO_PIN_9
 #define EN_I2C_CH2_PORT   GPIOA       
-#define EN_I2C_CH2_PIN    GPIO_PIN_0    
+#define EN_I2C_CH2_PIN    GPIO_PIN_8
 #define EN_I2C_CH3_PORT   GPIOB        
-#define EN_I2C_CH3_PIN    GPIO_PIN_10    
-#define EN_I2C_BAT_PORT   GPIOA          
-#define EN_I2C_BAT_PIN    GPIO_PIN_2    
+#define EN_I2C_CH3_PIN    GPIO_PIN_15
+#define EN_I2C_BAT_PORT   GPIOB       
+#define EN_I2C_BAT_PIN    GPIO_PIN_12
 
 #define CLAMP_U16(x)  ((x) > 0xFFFFU ? (uint16_t)0xFFFF : (uint16_t)(x)) // uint32 to uint16
 
