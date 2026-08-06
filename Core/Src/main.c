@@ -81,7 +81,6 @@ typedef struct {
 
 #define WDI_TOGGLE_INTERVAL_MS  500 // must be under the external WDI timeout
 
-// SONRADAN DEĞİŞTİRİLECEK PLACEHOLDERS
 #define EN_I2C_CH1_PORT   GPIOA         
 #define EN_I2C_CH1_PIN    GPIO_PIN_9
 #define EN_I2C_CH2_PORT   GPIOA       
@@ -442,8 +441,11 @@ int main(void)
   MX_I2C2_Init();
   MX_I2C1_Init();
 
-  MPPT_EN_I2C_Init(); // placeholderları değiştirmeyi unutma
   /* USER CODE BEGIN 2 */
+
+  MPPT_EN_I2C_Init(); 
+  HAL_Delay(10);
+  
   if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_ACCEPT_IN_RX_FIFO0,FDCAN_ACCEPT_IN_RX_FIFO0,FDCAN_REJECT_REMOTE, FDCAN_REJECT_REMOTE) != HAL_OK){
       errorCounter++;
   }
