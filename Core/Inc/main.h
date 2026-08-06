@@ -59,6 +59,14 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define WDI_Pin GPIO_PIN_1
 #define WDI_GPIO_Port GPIOH
+#define BAT_I2C_EN_Pin GPIO_PIN_12
+#define BAT_I2C_EN_GPIO_Port GPIOB
+#define CH3_I2C_EN_Pin GPIO_PIN_15
+#define CH3_I2C_EN_GPIO_Port GPIOB
+#define CH2_I2C_EN_Pin GPIO_PIN_8
+#define CH2_I2C_EN_GPIO_Port GPIOA
+#define CH1_I2C_EN_Pin GPIO_PIN_9
+#define CH1_I2C_EN_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 

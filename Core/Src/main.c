@@ -85,14 +85,14 @@ typedef struct {
 
 #define WDI_TOGGLE_INTERVAL_MS  500 // must be under the external WDI timeout
 
-#define EN_I2C_CH1_PORT   GPIOA         
-#define EN_I2C_CH1_PIN    GPIO_PIN_9
-#define EN_I2C_CH2_PORT   GPIOA       
-#define EN_I2C_CH2_PIN    GPIO_PIN_8
-#define EN_I2C_CH3_PORT   GPIOB        
-#define EN_I2C_CH3_PIN    GPIO_PIN_15
-#define EN_I2C_BAT_PORT   GPIOB       
-#define EN_I2C_BAT_PIN    GPIO_PIN_12
+#define EN_I2C_CH1_PORT CH1_I2C_EN_GPIO_Port
+#define EN_I2C_CH1_PIN  CH1_I2C_EN_Pin
+#define EN_I2C_CH2_PORT CH2_I2C_EN_GPIO_Port
+#define EN_I2C_CH2_PIN  CH2_I2C_EN_Pin
+#define EN_I2C_CH3_PORT CH3_I2C_EN_GPIO_Port
+#define EN_I2C_CH3_PIN  CH3_I2C_EN_Pin
+#define EN_I2C_BAT_PORT BAT_I2C_EN_GPIO_Port
+#define EN_I2C_BAT_PIN  BAT_I2C_EN_Pin
 
 #define CLAMP_U16(x)  ((x) > 0xFFFFU ? (uint16_t)0xFFFF : (uint16_t)(x)) // uint32 to uint16
 
@@ -296,29 +296,17 @@ HAL_StatusTypeDef LT8491_ReadAllTelemetry(I2C_HandleTypeDef *hi2c, uint16_t devA
 }
 
 void MPPT_EN_I2C_Init(void){ 
-    GPIO_InitTypeDef gpio = {0};
-    gpio.Mode  = GPIO_MODE_OUTPUT_PP;
-    gpio.Pull  = GPIO_NOPULL;
-    gpio.Speed = GPIO_SPEED_FREQ_LOW;
- 
-    gpio.Pin = EN_I2C_CH1_PIN;
-    HAL_GPIO_Init(EN_I2C_CH1_PORT, &gpio);
- 
-    gpio.Pin = EN_I2C_CH2_PIN;
-    HAL_GPIO_Init(EN_I2C_CH2_PORT, &gpio);
- 
-    gpio.Pin = EN_I2C_CH3_PIN;
-    HAL_GPIO_Init(EN_I2C_CH3_PORT, &gpio);
- 
-    gpio.Pin = EN_I2C_BAT_PIN;
-    HAL_GPIO_Init(EN_I2C_BAT_PORT, &gpio);
- 
+
     /* Drive all enables high, level shifters pass-through */
-    HAL_GPIO_WritePin(EN_I2C_CH1_PORT, EN_I2C_CH1_PIN, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(EN_I2C_CH2_PORT, EN_I2C_CH2_PIN, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(EN_I2C_CH3_PORT, EN_I2C_CH3_PIN, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(EN_I2C_BAT_PORT, EN_I2C_BAT_PIN, GPIO_PIN_SET);
+    HAL_GPIO_WritePin( CH1_I2C_EN_GPIO_Port, CH1_I2C_EN_Pin,GPIO_PIN_SET );
+
+    HAL_GPIO_WritePin( CH2_I2C_EN_GPIO_Port,CH2_I2C_EN_Pin,GPIO_PIN_SET );
+
+    HAL_GPIO_WritePin(CH3_I2C_EN_GPIO_Port,CH3_I2C_EN_Pin,GPIO_PIN_SET );
+
+    HAL_GPIO_WritePin(BAT_I2C_EN_GPIO_Port,BAT_I2C_EN_Pin,GPIO_PIN_SET );
 }
+
 HAL_StatusTypeDef LT8491_ReadByte(I2C_HandleTypeDef *hi2c, uint16_t devAddr, uint8_t reg, uint8_t *value){
     return HAL_I2C_Mem_Read(hi2c, devAddr, reg, I2C_MEMADD_SIZE_8BIT, value, 1, 100);
 }
@@ -366,23 +354,23 @@ HAL_StatusTypeDef MPPT_Send_Housekeeping(void){
     uint32_t total_iout = (uint32_t)ch1.iout + ch2.iout + ch3.iout;
     uint32_t total_pout = (uint32_t)ch1.pout + ch2.pout + ch3.pout;
  
-    payload[0]  = ch1.vbat;              // battery voltage mv
+    payload[0]  = (ch1.vbat*10);              // battery voltage mv
     payload[1]  = CLAMP_U16(total_iout); // battery current ma
     payload[2]  = CLAMP_U16(total_pout);  // battery power mw
  
-    payload[3]  = ch1.pout;               // CH1 Power Out     
-    payload[4]  = ch1.pin;                // CH1 Power Draw      
-    payload[5]  = ch1.vin;                // CH1 Power Voltage   
+    payload[3]  = (ch1.pout*10);               // CH1 Power Out     
+    payload[4]  = (ch1.pin*10);                // CH1 Power Draw      
+    payload[5]  = (ch1.vin*10);                // CH1 Power Voltage   
     payload[6]  = 0;                      // CH1 Placeholder         
  
-    payload[7]  = ch2.pout;               // CH2 Power Out      
-    payload[8]  = ch2.pin;                // CH2 Power Draw      
-    payload[9]  = ch2.vin;                // CH2 Power Voltage  
+    payload[7]  = (ch2.pout*10);               // CH2 Power Out      
+    payload[8]  = (ch2.pin*10);                // CH2 Power Draw      
+    payload[9]  = (ch2.vin*10);                // CH2 Power Voltage  
     payload[10] = 0;                      // CH2 Placeholder         
  
-    payload[11] = ch3.pout;               // CH3 Power Out   
-    payload[12] = ch3.pin;                // CH3 Power Draw    
-    payload[13] = ch3.vin;                // CH3 Power Voltage 
+    payload[11] = (ch3.pout*10);               // CH3 Power Out   
+    payload[12] = (ch3.pin*10);                // CH3 Power Draw    
+    payload[13] = (ch3.vin*10);                // CH3 Power Voltage 
     payload[14] = 0;                      // CH3 Placeholder         
  
     int16_t tbat_raw = (int16_t)ch1.tbat;
@@ -391,8 +379,7 @@ HAL_StatusTypeDef MPPT_Send_Housekeeping(void){
         payload[15] = (uint16_t)(tbat_k + 0.5f);  
     }else{
         payload[15] = 0;   
-        }
-    }          // MPPT Board Temp kelvin olarak dönüşüm yanlış olabilir emin değilim hiç burda channel 1 okumak yeterli mi? 
+    }         // MPPT Board Temp kelvin olarak dönüşüm yanlış olabilir emin değilim hiç burda channel 1 okumak yeterli mi? 
 
     payload[16] = 0;                      // Placeholder            
     payload[17] = 0;                      // Placeholder           
@@ -478,12 +465,11 @@ int main(void)
   MX_SPI1_Init();
   MX_I2C2_Init();
   MX_I2C1_Init();
-
   /* USER CODE BEGIN 2 */
 
   MPPT_EN_I2C_Init(); 
   HAL_Delay(10);
-  MPPT_Ensure_Charging();
+  MPPT_Ensure_Charging(); // bu lt8491'lerin charging enable pinlerini aktif ediyor, eğer kapalıysa. bunu daha kontrollü yapmak lazım sanırım, çünkü eğer kapalıysa açıyor, ama kapalı olmasının sebebi bir hata olabilir. o yüzden bunu daha kontrollü yapmak lazım. mesela önce stat register'ı oku, eğer charging enable pin kapalıysa ve stat register'da bir hata yoksa enable et gibi.
   
   if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_ACCEPT_IN_RX_FIFO0,FDCAN_ACCEPT_IN_RX_FIFO0,FDCAN_REJECT_REMOTE, FDCAN_REJECT_REMOTE) != HAL_OK){
       errorCounter++;
@@ -793,12 +779,32 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(WDI_GPIO_Port, WDI_Pin, GPIO_PIN_RESET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, BAT_I2C_EN_Pin|CH3_I2C_EN_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, CH2_I2C_EN_Pin|CH1_I2C_EN_Pin, GPIO_PIN_RESET);
+
   /*Configure GPIO pin : WDI_Pin */
   GPIO_InitStruct.Pin = WDI_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(WDI_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : BAT_I2C_EN_Pin CH3_I2C_EN_Pin */
+  GPIO_InitStruct.Pin = BAT_I2C_EN_Pin|CH3_I2C_EN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : CH2_I2C_EN_Pin CH1_I2C_EN_Pin */
+  GPIO_InitStruct.Pin = CH2_I2C_EN_Pin|CH1_I2C_EN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

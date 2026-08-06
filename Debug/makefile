@@ -34,34 +34,34 @@ $(wildcard ../makefile.init) \
 $(wildcard ../makefile.targets) \
 
 
-BUILD_ARTIFACT_NAME := mppt_card
+BUILD_ARTIFACT_NAME := S3-EPS-03-Embedded-Code
 BUILD_ARTIFACT_EXTENSION := elf
 BUILD_ARTIFACT_PREFIX :=
 BUILD_ARTIFACT := $(BUILD_ARTIFACT_PREFIX)$(BUILD_ARTIFACT_NAME)$(if $(BUILD_ARTIFACT_EXTENSION),.$(BUILD_ARTIFACT_EXTENSION),)
 
 # Add inputs and outputs from these tool invocations to the build variables 
 EXECUTABLES += \
-mppt_card.elf \
+S3-EPS-03-Embedded-Code.elf \
 
 MAP_FILES += \
-mppt_card.map \
+S3-EPS-03-Embedded-Code.map \
 
 SIZE_OUTPUT += \
 default.size.stdout \
 
 OBJDUMP_LIST += \
-mppt_card.list \
+S3-EPS-03-Embedded-Code.list \
 
 
 # All Target
 all: main-build
 
 # Main-build Target
-main-build: mppt_card.elf secondary-outputs
+main-build: S3-EPS-03-Embedded-Code.elf secondary-outputs
 
 # Tool invocations
-mppt_card.elf mppt_card.map: $(OBJS) $(USER_OBJS) /Users/asyadural/STM32CubeIDE/workspace_2.1.1/mppt_card/STM32U585CITX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "mppt_card.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m33 -T"/Users/asyadural/STM32CubeIDE/workspace_2.1.1/mppt_card/STM32U585CITX_FLASH.ld" --specs=nosys.specs -Wl,-Map="mppt_card.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+S3-EPS-03-Embedded-Code.elf S3-EPS-03-Embedded-Code.map: $(OBJS) $(USER_OBJS) /Users/asyadural/STM32CubeIDE/workspace_2.1.1/S3-EPS-03-Embedded-Code/STM32U585CITX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "S3-EPS-03-Embedded-Code.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m33 -T"/Users/asyadural/STM32CubeIDE/workspace_2.1.1/S3-EPS-03-Embedded-Code/STM32U585CITX_FLASH.ld" --specs=nosys.specs -Wl,-Map="S3-EPS-03-Embedded-Code.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv5-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
@@ -70,14 +70,14 @@ default.size.stdout: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
 	@echo 'Finished building: $@'
 	@echo ' '
 
-mppt_card.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "mppt_card.list"
+S3-EPS-03-Embedded-Code.list: $(EXECUTABLES) makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-objdump -h -S $(EXECUTABLES) > "S3-EPS-03-Embedded-Code.list"
 	@echo 'Finished building: $@'
 	@echo ' '
 
 # Other Targets
 clean:
-	-$(RM) default.size.stdout mppt_card.elf mppt_card.list mppt_card.map
+	-$(RM) S3-EPS-03-Embedded-Code.elf S3-EPS-03-Embedded-Code.list S3-EPS-03-Embedded-Code.map default.size.stdout
 	-@echo ' '
 
 secondary-outputs: $(SIZE_OUTPUT) $(OBJDUMP_LIST)
