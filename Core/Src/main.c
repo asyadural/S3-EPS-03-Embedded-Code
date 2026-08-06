@@ -75,6 +75,10 @@ typedef struct {
 #define TELE_VBAT  0x0C
 #define TELE_VIN   0x0E
 
+#define LT8491_REG_STAT_CHARGER      0x12
+#define LT8491_REG_CTRL_CHRG_EN      0x23
+#define LT8491_REG_BOOT_INIT_CHRG_EN 0x9A
+
 #define LT8491_CH1_ADDR  (0x10 << 1)
 #define LT8491_CH2_ADDR  (0x29 << 1)
 #define LT8491_CH3_ADDR  (0x19 << 1)
@@ -153,9 +157,13 @@ HAL_StatusTypeDef FDCAN_ProcessQueue(void);
 uint8_t FDCAN_DLC_ToBytes(uint32_t dataLength);
 HAL_StatusTypeDef FDCAN_ProcessQueueElement(FDCAN_queue_element *element);
 uint32_t FDCAN_Bytes_To_DLC(uint8_t bytes);
-HAL_StatusTypeDef LT8491_ReadWord(uint16_t devAddr, uint8_t reg, uint16_t *value);
+HAL_StatusTypeDef LT8491_ReadWord(I2C_HandleTypeDef *hi2c, uint16_t devAddr, uint8_t reg, uint16_t *value);
 HAL_StatusTypeDef LT8491_ReadAllTelemetry(I2C_HandleTypeDef *hi2c, uint16_t devAddr, LT8491_Telemetry_t *tele);
 void MPPT_EN_I2C_Init(void);
+
+HAL_StatusTypeDef LT8491_ReadByte(I2C_HandleTypeDef *hi2c, uint16_t devAddr, uint8_t reg, uint8_t *value);
+HAL_StatusTypeDef LT8491_WriteByte(I2C_HandleTypeDef *hi2c, uint16_t devAddr, uint8_t reg, uint8_t value);
+void MPPT_Ensure_Charging(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -264,9 +272,9 @@ HAL_StatusTypeDef FDCAN_ProcessQueueElement(FDCAN_queue_element *element){
     return HAL_OK;
 }
 
-HAL_StatusTypeDef LT8491_ReadWord(uint16_t devAddr, uint8_t reg, uint16_t *value){
+HAL_StatusTypeDef LT8491_ReadWord(I2C_HandleTypeDef *hi2c, uint16_t devAddr, uint8_t reg, uint16_t *value){
     uint8_t data[2];
-    HAL_StatusTypeDef status = HAL_I2C_Mem_Read(&hi2c1, devAddr, reg, I2C_MEMADD_SIZE_8BIT, data, 2, 100);
+    HAL_StatusTypeDef status = HAL_I2C_Mem_Read(hi2c, devAddr, reg, I2C_MEMADD_SIZE_8BIT, data, 2, 100);
 
     if (status != HAL_OK) return status;
 
@@ -275,19 +283,19 @@ HAL_StatusTypeDef LT8491_ReadWord(uint16_t devAddr, uint8_t reg, uint16_t *value
 }
 
 HAL_StatusTypeDef LT8491_ReadAllTelemetry(I2C_HandleTypeDef *hi2c, uint16_t devAddr, LT8491_Telemetry_t *tele){
-  if (LT8491_ReadWord(devAddr, TELE_TBAT, &tele->tbat) != HAL_OK) goto fail;
-  if (LT8491_ReadWord(devAddr, TELE_POUT, &tele->pout) != HAL_OK) goto fail;
-  if (LT8491_ReadWord(devAddr, TELE_PIN,  &tele->pin)  != HAL_OK) goto fail;
-  if (LT8491_ReadWord(devAddr, TELE_IOUT, &tele->iout) != HAL_OK) goto fail;
-  if (LT8491_ReadWord(devAddr, TELE_VBAT, &tele->vbat) != HAL_OK) goto fail;
-  if (LT8491_ReadWord(devAddr, TELE_VIN,  &tele->vin)  != HAL_OK) goto fail;
+  if (LT8491_ReadWord(hi2c,devAddr, TELE_TBAT, &tele->tbat) != HAL_OK) goto fail;
+  if (LT8491_ReadWord(hi2c,devAddr, TELE_POUT, &tele->pout) != HAL_OK) goto fail;
+  if (LT8491_ReadWord(hi2c,devAddr, TELE_PIN,  &tele->pin)  != HAL_OK) goto fail;
+  if (LT8491_ReadWord(hi2c,devAddr, TELE_IOUT, &tele->iout) != HAL_OK) goto fail;
+  if (LT8491_ReadWord(hi2c,devAddr, TELE_VBAT, &tele->vbat) != HAL_OK) goto fail;
+  if (LT8491_ReadWord(hi2c,devAddr, TELE_VIN,  &tele->vin)  != HAL_OK) goto fail;
   return HAL_OK;
  fail:
   *tele = (LT8491_Telemetry_t){0};
   return HAL_ERROR;
 }
 
-void MPPT_EN_I2C_Init(void){ //pinler yine placeholder, sonradan değiştirilecek
+void MPPT_EN_I2C_Init(void){ 
     GPIO_InitTypeDef gpio = {0};
     gpio.Mode  = GPIO_MODE_OUTPUT_PP;
     gpio.Pull  = GPIO_NOPULL;
@@ -310,6 +318,28 @@ void MPPT_EN_I2C_Init(void){ //pinler yine placeholder, sonradan değiştirilece
     HAL_GPIO_WritePin(EN_I2C_CH2_PORT, EN_I2C_CH2_PIN, GPIO_PIN_SET);
     HAL_GPIO_WritePin(EN_I2C_CH3_PORT, EN_I2C_CH3_PIN, GPIO_PIN_SET);
     HAL_GPIO_WritePin(EN_I2C_BAT_PORT, EN_I2C_BAT_PIN, GPIO_PIN_SET);
+}
+HAL_StatusTypeDef LT8491_ReadByte(I2C_HandleTypeDef *hi2c, uint16_t devAddr, uint8_t reg, uint8_t *value){
+    return HAL_I2C_Mem_Read(hi2c, devAddr, reg, I2C_MEMADD_SIZE_8BIT, value, 1, 100);
+}
+
+HAL_StatusTypeDef LT8491_WriteByte(I2C_HandleTypeDef *hi2c, uint16_t devAddr, uint8_t reg, uint8_t value){
+    return HAL_I2C_Mem_Write(hi2c, devAddr, reg, I2C_MEMADD_SIZE_8BIT, &value, 1, 100);
+}
+//kapalıysa enable ediyor
+void MPPT_Ensure_Charging(void){
+    const uint16_t addrs[3] = {LT8491_CH1_ADDR, LT8491_CH2_ADDR, LT8491_CH3_ADDR};
+    for (uint8_t i = 0; i < 3; i++){
+        uint8_t stat = 0;
+        if (LT8491_ReadByte(&hi2c1, addrs[i], LT8491_REG_STAT_CHARGER, &stat) != HAL_OK){
+            errorCounter++;
+            continue;
+        }
+        if ((stat & 0x01) == 0){  // CHRG_EN_PIN/charging-off göstergesi: bit tanımını datasheet STAT_CHARGER tablosundan teyit et
+            if (LT8491_WriteByte(&hi2c1, addrs[i], LT8491_REG_CTRL_CHRG_EN, 0x01) != HAL_OK)
+                errorCounter++;
+        }
+    }
 }
 
 HAL_StatusTypeDef MPPT_Send_Housekeeping(void){
@@ -355,7 +385,15 @@ HAL_StatusTypeDef MPPT_Send_Housekeeping(void){
     payload[13] = ch3.vin;                // CH3 Power Voltage 
     payload[14] = 0;                      // CH3 Placeholder         
  
-    payload[15] = ch1.tbat;               // MPPT Board Temp burda channel 1 okumak yeterli mi? 
+    int16_t tbat_raw = (int16_t)ch1.tbat;
+    if ((mppt_ch_status & CH_STATUS_CH1_VALID) && tbat_raw != (int16_t)0x7FFF) {
+        float tbat_k = (tbat_raw / 10.0f) + 273.15f;
+        payload[15] = (uint16_t)(tbat_k + 0.5f);  
+    }else{
+        payload[15] = 0;   
+        }
+    }          // MPPT Board Temp kelvin olarak dönüşüm yanlış olabilir emin değilim hiç burda channel 1 okumak yeterli mi? 
+
     payload[16] = 0;                      // Placeholder            
     payload[17] = 0;                      // Placeholder           
  
@@ -445,6 +483,7 @@ int main(void)
 
   MPPT_EN_I2C_Init(); 
   HAL_Delay(10);
+  MPPT_Ensure_Charging();
   
   if (HAL_FDCAN_ConfigGlobalFilter(&hfdcan1, FDCAN_ACCEPT_IN_RX_FIFO0,FDCAN_ACCEPT_IN_RX_FIFO0,FDCAN_REJECT_REMOTE, FDCAN_REJECT_REMOTE) != HAL_OK){
       errorCounter++;
